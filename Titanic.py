@@ -28,7 +28,7 @@ def pieplot():
 
     plt.pie(gender['PassengerId'], labels=['female','male'], autopct='%1.1f%%', startangle=100, colors=['pink','skyblue'])
     plt.show()
-# --------------------------------------------------------------------------------------
+# ------------------------2--------------------------------------------------------------
 # 看Age與Sex的關係
 # sb.catplot(x = "Sex",y = "Age",data=titanic,kind = 'box')
 
@@ -47,7 +47,7 @@ def pieplot():
 # Age和Name的相關性
 titanic['Title'] = titanic.Name.str.split(', ', expand=True)[1]
 titanic['Title'] = titanic.Title.str.split('.', expand=True)[0]
-print(titanic['Title'].unique())
+# print(titanic['Title'].unique())
 
 # 計算每個 Title 的年齡平均值
 Age_Mean = titanic[['Title','Age']].groupby( by=['Title'] ).mean()
@@ -62,11 +62,19 @@ for i in range(len(titanic["Age"].isnull())):
             if titanic["Title"][i]==Age_Mean.Title[j]:
                 titanic["Age"][i]=Age_Mean.Age_Mean[j]
 
-dataprocessing()
+# dataprocessing()
 def histogramplot():
     age = titanic.Age
-    print(age)
+    sb.histplot(x='Age',data=titanic)
+    plt.show()
 # histogramplot()
 
+# -----------------------------3--------------------------------------
 
 # def barchat():
+# print(titanic[['Fare','Embarked']])
+# sb.barplot(x=titanic['Fare'],y=titanic['Embarked'],data=titanic)
+# titanic.groupby('Embarked').Fare.sum().plot(kind='bar')
+# plt.show()
+
+print(titanic.groupby('Embarked').count())
