@@ -8,7 +8,7 @@ from sklearn.ensemble import RandomForestClassifier
 file_path = 'Titanic.csv'
 
 data = pd.read_csv(file_path)
-
+data = data.reset_index(drop=True)
 titanic = pd.DataFrame(data).copy()
 titanic = titanic.dropna(subset=['Embarked'])
 titanic['Cabin'] = titanic['Cabin'].fillna('Not_Found')
@@ -60,7 +60,9 @@ def select_name(s):
         'Mrs' : 'Mrs'
     }
     return d.get(s)
-# print(titanic['Title'].apply(select_name))
+name = titanic['Title'].apply(select_name)
+dummy = pd.get_dummies(name)
+traindf = pd.concat([titanic, dummy], axis=1)
 
 # # 計算每個 Title 的年齡平均值
 Age_Mean = titanic[['Title','Age']].groupby( by=['Title'] ).mean()
@@ -132,33 +134,32 @@ for i in range(len(titanic["Age"].isnull())):
 # # pClassSurvive(
 
 # # --------------------------資料分割------------------------------------
-features = ['Survived','Pclass','Sex','Age','SibSp','Parch','Fare','Embarked']
+features = ['PassengerId','Survived','Pclass','Sex','Age','SibSp','Parch','Fare','Embarked','Title']
 X = titanic[features]
 y = titanic.Survived
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2)
 
 # 做one-hot encoding
 features_dummy = titanic[['Embarked','Sex','Title']]
 features_dummy = pd.get_dummies(features_dummy,columns=['Embarked','Sex','Title'])
-X_train = pd.concat([X_train,features_dummy],axis=1)
-X_test = pd.concat([X_test,features_dummy],axis=1)
-print(X_train)
+X = pd.concat([X ,features_dummy],axis=1)
 
-traindf = X_train.drop(['Title_Capt', 'Title_Col', 'Title_Don', 'Title_Dr', 'Title_Jonkheer',
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2)
+
+traindf = X_train.drop(['PassengerId','Title','Title_Capt', 'Title_Col', 'Title_Don', 'Title_Dr', 'Title_Jonkheer',
        'Title_Lady', 'Title_Major','Title_Mlle',
        'Title_Mme',  'Title_Ms', 'Title_Rev',
        'Title_Sir', 'Title_the Countess','Embarked','Sex'], axis=1)
-testdf = X_train.drop(['Title_Capt', 'Title_Col', 'Title_Don', 'Title_Dr', 'Title_Jonkheer',
+testdf = X_test.drop(['Title','Survived','Title_Capt', 'Title_Col', 'Title_Don', 'Title_Dr', 'Title_Jonkheer',
        'Title_Lady', 'Title_Major','Title_Mlle',
        'Title_Mme',  'Title_Ms', 'Title_Rev', 
        'Title_Sir', 'Title_the Countess','Embarked','Sex'], axis=1)
 
+
 # 相關係數
 # print(traindf.corr())
-plt.figure(figsize=(14, 14))
+# plt.figure(figsize=(14, 14))
 
-sb.heatmap(traindf.corr(), annot=True, cmap='RdBu')
+# sb.heatmap(traindf.corr(), annot=True, cmap='RdBu')
 # plt.show()
 
 # --------------------------建模--------------------------------
@@ -170,20 +171,49 @@ from sklearn.model_selection import cross_val_score
 import numpy as np
 
 # 把訓練資料的答案丟掉
-# trainx = traindf.drop(['Survived'], axis=1)
+trainx = traindf.drop(['Survived'], axis=1)
 # 將答案當作目標資料
-# trainy = traindf['Survived']
+trainy = traindf['Survived']
 
 # n_estimators -> 你要有幾棵樹
-# clf = RandomForestClassifier(max_depth=8, n_estimators=50)
+model = RandomForestClassifier(max_depth=8, n_estimators=50)
 
 # cv參數決定切幾份(這裡切10份) 
 # 用np.average取其平均
-# np.average(cross_val_score(clf, trainx, trainy, cv=10))
+print(np.average(cross_val_score(model, trainx, trainy, cv=10)))
 
 
-# #Scale the data 
-# # from sklearn.preprocessing import StandardScaler
-# # sc = StandardScaler()
-# # X_trian = sc.fit_transform(X_train)
-# # X_test = sc.transform(X_test)
+# 貪婪搜索參數(一個一個試)
+# 找max_depth與n_estimators
+from sklearn.model_selection import GridSearchCV
+p = {
+#   深度的搜索範圍(5~10)
+    'max_depth':list(range(5, 11)),
+#   棵數的搜索範圍(20~30)
+    'n_estimators':list(range(20, 31))
+}
+model = RandomForestClassifier()
+s = GridSearchCV(model, p, cv=5)
+s.fit(trainx, trainy)
+# best_params_L: 最好的參數
+# best_score_: 最好的分數
+print(s.best_params_)
+print(s.best_score_)
+
+
+# 把旅客ID取出
+testx = testdf.drop(['PassengerId'], axis=1)
+# 存下旅客ID
+testid = testdf['PassengerId']
+# 設定隨機森林參數
+clf = RandomForestClassifier(max_depth=7, n_estimators=24)
+# 將訓練資料放入隨機森林運算
+clf.fit(trainx, trainy)
+# 利用訓練好的模型預測測試資料
+pre = clf.predict(testx)
+# 將計算結果存下，並輸出成csv檔
+result = pd.DataFrame()
+result['PassengerId'] = testid
+result['Survived'] = pre
+result.to_csv('result.csv', encoding='utf-8', index=False)
+
