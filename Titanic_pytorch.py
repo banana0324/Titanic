@@ -1,129 +1,79 @@
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from collections import Counter
-from sklearn.utils import shuffle
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
 
 import torch
+from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 import torch.nn as nn
-from torch.nn import functional as F
-from torch.autograd import Variable
+import torch.optim as optim
+import torch.nn.functional as F
 
-df_train = pd.read_csv('train.csv')
-df_test  = pd.read_csv('test.csv')
-df_sub   = pd.read_csv('gender_submission.csv')
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import seaborn as sns
+import missingno as msno
 
-df_train.drop(['Name','Ticket','Cabin'],axis=1,inplace=True)
-df_test.drop(['Name','Ticket','Cabin'],axis=1,inplace=True)
+import sklearn
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
-sex = pd.get_dummies(df_train['Sex'],drop_first=True)
-embark = pd.get_dummies(df_train['Embarked'],drop_first=True)
-df_train = pd.concat([df_train,sex,embark],axis=1)
+import warnings
 
-df_train.drop(['Sex','Embarked'],axis=1,inplace=True)
+train_df = pd.read_csv('train.csv') 
+test_df = pd.read_csv('test.csv') 
+submission_df = pd.read_csv('gender_submission.csv')
+result_df = test_df[["PassengerId"]]
 
-sex = pd.get_dummies(df_test['Sex'],drop_first=True)
-embark = pd.get_dummies(df_test['Embarked'],drop_first=True)
-df_test = pd.concat([df_test,sex,embark],axis=1)
+# EDA
 
-df_test.drop(['Sex','Embarked'],axis=1,inplace=True)
+# print(train_df.shape)
+# print(test_df.shape)
 
-Scaler1 = StandardScaler()
-Scaler2 = StandardScaler()
+# msno.matrix(train_df)
+# msno.matrix(test_df)
+# plt.show()
+# print(train_df.head())
+# print(train_df.info())
 
-train_columns = df_train.columns
-test_columns = df_test.columns
+test_df[test_df.Fare.isna()]
+test_df.Fare.fillna(test_df.Fare[(test_df.Age) > 55 & (test_df.Age < 65)].mean(), inplace=True)
+# test_df.info()
+# submission_df.head()
+# sns.pairplot(data=train_df)
+# plt.show()
 
-df_train = pd.DataFrame(Scaler1.fit_transform(df_train))
-df_test = pd.DataFrame(Scaler2.fit_transform(df_test))
-
-df_train.columns = train_columns
-df_test.columns = test_columns
-
-features = df_train.iloc[:,:2].columns.to_list()
-target = df_train['Survived'].name
-
-x_train = df_train.iloc[:,:2].values
-y_train = df_train['Survived'].values
-
-x_train_tensor = torch.from_numpy(x_train)
-y_train_tensor = torch.from_numpy(y_train)
-
-class Net(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.fc1 = nn.Linear(8, 512)
-        self.fc2 = nn.Linear(512, 512)
-        self.fc3 = nn.Linear(512, 2)
-        self.dropout = nn.Dropout(0.2)
-    
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
-        x = self.fc3(x)
-
-        return x
-
-model = Net()
-print(model)
-
-lr = 1e-1
-n_epochs = 500
-
-loss_fn = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr = lr)
-
-batch_size = 64
-
-batch_no = len(x_train) // batch_size
-
-train_loss = 0
-train_loss_min = np.Inf
-
-def make_train_step(model, loss_fn, optimizer):
-
-    def train_step(x, y):
-
-        model.train()
-        yhat = model(x)
-        loss = loss_fn(y,yhat)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
+# sns.barplot(x="Sex", y= "Survived", data=train_df)
+# sns.barplot(y="Age", x="Survived", data=train_df)
+# sns.barplot(x="Pclass", y= "Survived", data=train_df)
+# sns.barplot(
+#     x="Embarked",
+#     y="Survived",
+#     palette='hls',
+#     data=train_df)
+# sns.barplot(x="Pclass", y="Survived", hue="Embarked", data=train_df)
+# sns.barplot(y="SibSp", x="Survived", data=train_df)
+# sns.barplot(y="Parch", x="Survived", data=train_df)
+# sns.heatmap(train_df.corr(), cmap="BrBG", vmin=-1, vmax=1, annot=True)
+# heatmap = sns.heatmap(train_df.corr()[['Survived']].sort_values(by='Survived', ascending=False), vmin=-1, vmax=1, annot=True, cmap='BrBG')
+# heatmap.set_title('Features Correlating with Survived', fontdict={'fontsize':18}, pad=16);
 
 
-for epoch in range(n_epochs):
-    for i in range(batch_no):
-        start = i * batch_size
-        end = start + batch_size
-        # x_var = Variable(torch.FloatTensor(x_train[start:end]))
-        # y_var = Variable(torch.LongTensor(y_train[start:end]))
-        x_var = x_train_tensor[start:end]
-        y_var = y_train_tensor[start:end]
+# Data integrity check
+column_targets = ["Survived"]
+features = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked"]
+all_columns = column_targets + features
 
-        optimizer.zero_grad()
-        output = model(x_var)
-        loss = loss_fn(output,y_var)
-        loss.backward()
-        optimizer.step()
+def nan_checking():
+    null_columns = {}
+    for feature in all_columns:
+        nulls = train_df[feature].isnull().sum()
+        if nulls > 0:
+            null_columns[feature] = nulls
+    print(null_columns)
 
-        values, label = torch.max(output, 1)
-        num_right = np.sum(label.data.numpy() == y_train[start:end])
-        train_loss += loss.item() * batch_size
+train_df.drop(labels=["PassengerId", "Name", "Ticket", "Cabin"], inplace=True, axis=1)
+test_df.drop(labels=["PassengerId", "Name", "Ticket", "Cabin"], inplace=True, axis=1)
+train_df.head()
 
-    train_loss = train_loss / len(x_train)
-    if train_loss <= train_loss_min:
-        print("Validation loss decreased ({:6f} ===> {:6f}). Saving the model...".format(train_loss_min,train_loss))
-        torch.save(model.state_dict(), "model.pt")
-        train_loss_min = train_loss
-
-    if epoch % 200 == 0:
-        print('')
-        print("Epoch: {} \tTrain Loss: {} \tTrain Accuracy: {}".format(epoch+1, train_loss,num_right / len(y_train[start:end]) ))
-print('Training Ended! ')
+targets_df = train_df[column_targets]
+nan_checking()
